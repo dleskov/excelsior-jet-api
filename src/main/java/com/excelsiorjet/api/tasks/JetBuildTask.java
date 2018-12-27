@@ -93,8 +93,10 @@ public class JetBuildTask {
                 excelsiorJet.since11_3() &&
                 (project.appType() != ApplicationType.WINDOWS_SERVICE) &&
                 // JET-9267 workaround: cannot use xpack zipping when slimDown or diskFootprintReduction is enabled
+                // The issue is fixed in JET 12.
+                (excelsiorJet.since12_0() || (
                 (project.runtimeConfiguration().slimDown == null) &&
-                (project.runtimeConfiguration().diskFootprintReduction == null);
+                (project.runtimeConfiguration().diskFootprintReduction == null)));
     }
 
     private ArrayList<String> getXPackArgs(ArrayList<XPackOption> xpackOptions, File rspFile) throws JetTaskFailureException {
@@ -276,7 +278,7 @@ public class JetBuildTask {
             }
         } else {
             logger.info(s("JetBuildTask.ZipApp.Info"));
-            Utils.compressZipfile(packageDir, targetZip);
+            Utils.compressToZipFile(packageDir, targetZip);
         }
         return targetZip;
     }
@@ -287,6 +289,13 @@ public class JetBuildTask {
                 File targetZip = zipBuild(packageDir);
                 logger.info(s("JetBuildTask.Build.Success"));
                 logger.info(s("JetBuildTask.GetZip.Info", targetZip.getAbsolutePath()));
+                break;
+            case TAR_GZ:
+                logger.info(s("JetBuildTask.ArchiveApp.Info"));
+                File targetArchive = new File(project.jetOutputDir(), project.artifactName() + ".tar.gz");
+                Utils.compressToTarGzFile(packageDir, targetArchive);
+                logger.info(s("JetBuildTask.Build.Success"));
+                logger.info(s("JetBuildTask.GetArchive.Info", targetArchive.getAbsolutePath()));
                 break;
             case EXCELSIOR_INSTALLER:
                 packWithEI(buildDir);
@@ -306,7 +315,7 @@ public class JetBuildTask {
     }
 
     private void collectProfile(File profileDir) throws JetTaskFailureException, IOException, CmdLineToolException {
-        new RunTask(excelsiorJet, project).run(profileDir);
+        new RunTask(excelsiorJet, project, true).run(profileDir);
     }
 
     private long computeModifyTimeDaysBetween(File file1, File file2) {
@@ -366,6 +375,10 @@ public class JetBuildTask {
                 project.copyTomcatAndWar();
                 compile(buildDir);
                 break;
+            case SPRING_BOOT:
+                project.copySpringBootArtifact();
+                compile(buildDir);
+                break;
             default:
                 throw new AssertionError("Unknown application type");
         }
@@ -384,6 +397,7 @@ public class JetBuildTask {
                         break;
                     case PLAIN:
                     case TOMCAT:
+                    case SPRING_BOOT:
                         collectProfile(appOrProfileDir);
                         if (project.execProfiles().getJProfile().exists()) {
                             logger.info(Txt.s("JetApi.Profile.ProfileCollected"));
